@@ -197,7 +197,15 @@ function BreakView({ block, engine }) {
         >
           <div className="bq-stack" style={{ gap: 24, flex: 1.2, minWidth: 280 }}>
             <div className="bq-meta">ahora · haz esto</div>
-            <div style={{ fontSize: 'clamp(40px, 6vw, 80px)', lineHeight: 1, letterSpacing: '-0.04em', fontWeight: 500 }}>
+            <div
+              style={{
+                fontSize: 'clamp(22px, 3vw, 36px)',
+                lineHeight: 1.25,
+                letterSpacing: '-0.02em',
+                fontWeight: 500,
+                whiteSpace: 'pre-line',
+              }}
+            >
               {seg?.activity}
             </div>
             {seg?.rationale && (

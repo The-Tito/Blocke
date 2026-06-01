@@ -67,7 +67,7 @@ export function TodayPage() {
             Bloque entra cuando ya sabes qué vas a hacer. Crea los bloques del día y
             la IA calcula tus microdescansos.
           </div>
-          <Button size="lg" onClick={() => navigate('/plan')}>
+          <Button size="lg" onClick={() => navigate(`/plan?date=${dateKey}`)}>
             Planear el día →
           </Button>
         </div>
@@ -86,7 +86,7 @@ export function TodayPage() {
         }
         right={
           <div className="bq-row" style={{ gap: 10, flexWrap: 'wrap' }}>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/plan')}>
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/plan?date=${dateKey}`)}>
               Editar plan
             </Button>
             {allFinished ? (

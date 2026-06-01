@@ -74,27 +74,34 @@ function fallbackPlan(req: PlanRequest): Segment[] {
   let remaining = total;
   let idx = 0;
 
+  // Cada activity es una secuencia con tiempos que SUMA exactamente la duración
+  // del descanso (5 min). Así el usuario sabe qué hacer minuto a minuto.
   const screenBreaks = [
     {
-      activity: 'Mira a 6 metros durante 30 segundos',
-      rationale: 'Regla 20-20-20: relaja los músculos ciliares tras trabajo de pantalla.',
+      activity:
+        'Mira a 6 m · 30 s\nEstiramiento cervical lento · 1 min 30 s\nPonte de pie y camina · 2 min\nRespira lento · 1 min',
+      rationale: 'Combina la regla 20-20-20 con un corte postural completo.',
     },
     {
-      activity: 'Estiramiento cervical y de hombros',
-      rationale: 'Libera la tensión postural acumulada por estar sentado.',
+      activity:
+        'Cierra los ojos y respira · 1 min\nGira cuello y hombros · 1 min 30 s\nMira a 6 m · 30 s\nBebe agua y camina · 2 min',
+      rationale: 'Relaja la vista, libera tensión cervical y reactiva la circulación.',
     },
   ];
   const cognitiveBreaks = [
     {
-      activity: 'Mira por la ventana a algo lejano',
+      activity:
+        'Mira por la ventana a algo lejano · 1 min\nCamina sin destino · 2 min\nRespiraciones diafragmáticas · 2 min',
       rationale: 'Restauración de atención (Kaplan): estímulos sin esfuerzo recargan la atención dirigida.',
     },
     {
-      activity: 'Camina 2 minutos sin destino',
+      activity:
+        'Ponte de pie · 30 s\nCamina lento · 2 min 30 s\nEstira espalda y brazos · 1 min\nBebe agua · 1 min',
       rationale: 'El movimiento ligero corta el sedentarismo y recupera función cognitiva.',
     },
     {
-      activity: 'Respiraciones diafragmáticas lentas',
+      activity:
+        'Respira lento 4-7-8 · 2 min\nMira lejos sin enfocar nada · 1 min\nMueve manos y muñecas · 1 min\nLevántate y estira · 1 min',
       rationale: 'Reduce la activación y prepara al sistema nervioso para el siguiente segmento.',
     },
   ];
@@ -163,10 +170,19 @@ async function callGroq(apiKey: string, req: PlanRequest): Promise<Segment[] | n
     '- Segmentos de trabajo de 20-30 min. Pausas de 3-7 min. El primero y el último',
     '  segmento siempre son de tipo "work".',
     '- La suma de minutos de trabajo debe ser igual a la duración total pedida.',
+    'REGLA CLAVE PARA `activity` (pausa):',
+    '- La actividad debe OCUPAR TODA la duración del descanso. Si una acción base es',
+    '  corta (ej. mirar a 6 m suelen ser 30 s), encadena varias micro-acciones hasta',
+    '  cubrir todos los minutos. NUNCA dejes "tiempo muerto" sin indicación.',
+    '- Formato obligatorio: lista de pasos separados por salto de línea ("\\n"),',
+    '  cada paso con "Acción · tiempo" en español. La suma de los tiempos debe ser',
+    '  igual a duration_min de la pausa.',
+    '- Ejemplo de activity para una pausa de 5 min:',
+    '  "Mira a 6 m · 30 s\\nEstiramiento cervical · 1 min 30 s\\nCamina lento · 2 min\\nRespira lento · 1 min"',
     'Responde SOLO JSON con esta forma exacta:',
     '{"segments":[{"index":0,"kind":"work","duration_min":25},',
-    '{"index":1,"kind":"break","duration_min":5,"activity":"...","rationale":"..."}]}',
-    'activity: instrucción concreta y breve en español. rationale: una frase con el porqué.',
+    '{"index":1,"kind":"break","duration_min":5,"activity":"Mira a 6 m · 30 s\\nEstiramiento · 1 min 30 s\\nCamina · 2 min\\nRespira · 1 min","rationale":"..."}]}',
+    'rationale: una frase con el porqué del conjunto de la pausa.',
   ].join('\n');
 
   const user = [

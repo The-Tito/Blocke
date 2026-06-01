@@ -1,5 +1,6 @@
 /**
- * ui/pages/PlanPage — planeación del día (se usa la noche anterior).
+ * ui/pages/PlanPage — planeación del día. Por defecto planea hoy; con
+ * `?date=YYYY-MM-DD` se puede planear cualquier otro día (p. ej. mañana).
  *
  * Crea, edita, reordena y elimina bloques. Al guardar un bloque, el servicio de
  * planeación llama a la IA para calcular sus microdescansos.
@@ -15,7 +16,7 @@ import { useDayPlan, dayQueryKey } from '../../hooks/useDayPlan.js';
 import { useProfile } from '../../hooks/useProfile.js';
 import { useAuth } from '../../app/providers/AuthProvider.jsx';
 import { services } from '../../app/services.js';
-import { tomorrowKey, formatLongDate, formatDuration } from '../../lib/time.js';
+import { todayKey, formatLongDate, formatDuration } from '../../lib/time.js';
 import { assignedMinutes, windowMinutes, freeMinutes } from '../../domain/timeline.js';
 
 export function PlanPage() {
@@ -23,7 +24,7 @@ export function PlanPage() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const [params] = useSearchParams();
-  const dateKey = params.get('date') || tomorrowKey();
+  const dateKey = params.get('date') || todayKey();
 
   const { data, isLoading } = useDayPlan(dateKey);
   const { data: profile } = useProfile();

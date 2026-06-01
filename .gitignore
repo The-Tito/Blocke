@@ -19,3 +19,7 @@ yarn-error.log*
 
 # Supabase
 supabase/.temp
+
+# Handoff / notas internas
+HANDOFF.md
+handoff.md
