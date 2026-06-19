@@ -90,6 +90,7 @@ create table public.blocks (
   title           text not null check (char_length(title) between 1 and 200),
   work_type       text not null,                          -- ver domain/workTypes.js
   duration_min    int not null check (duration_min between 5 and 480),
+  fixed_start     time,                                   -- hora fijada por el usuario (NULL = automático)
   scheduled_start time,
   scheduled_end   time,
   status          text not null default 'pending'

@@ -11,6 +11,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AppShell } from '../layouts/AppShell.jsx';
 import { BlockRow } from '../components/BlockRow.jsx';
 import { NewBlockModal } from '../components/NewBlockModal.jsx';
+import { DictationModal } from '../components/DictationModal.jsx';
 import { Button, ProgressBar, Spinner } from '../components/primitives.jsx';
 import { useDayPlan, dayQueryKey } from '../../hooks/useDayPlan.js';
 import { useProfile } from '../../hooks/useProfile.js';
@@ -29,6 +30,7 @@ export function PlanPage() {
   const { data, isLoading } = useDayPlan(dateKey);
   const { data: profile } = useProfile();
   const [modal, setModal] = useState({ open: false, editingBlock: null });
+  const [dictationOpen, setDictationOpen] = useState(false);
   const [error, setError] = useState('');
 
   const day = data?.day;
@@ -80,6 +82,30 @@ export function PlanPage() {
     }
   }
 
+  // Dictado: paso 1 (analizar texto → borradores) y paso 2 (guardar bloques).
+  async function handleAnalyzeDictation(text) {
+    try {
+      return await services.planning.parseDictation({ text });
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  async function handleSaveDictation(drafts) {
+    try {
+      const res = await services.planning.addBlocksFromDrafts({
+        userId: user.id,
+        day,
+        drafts,
+        profile,
+      });
+      if (res.created.length > 0) refresh();
+      return res;
+    } catch (e) {
+      return { ok: false, created: [], skipped: [], error: e.message };
+    }
+  }
+
   async function handleDelete(block) {
     if (!window.confirm(`¿Eliminar "${block.title}"?`)) return;
     try {
@@ -123,6 +149,9 @@ export function PlanPage() {
           </div>
         </div>
         <div className="bq-row" style={{ gap: 10, flexWrap: 'wrap' }}>
+          <Button variant="ghost" size="sm" onClick={() => setDictationOpen(true)}>
+            🎤 Dictar
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setModal({ open: true, editingBlock: null })}>
             + Agregar
           </Button>
@@ -186,9 +215,14 @@ export function PlanPage() {
             Agrega tu primer bloque. Tres datos: qué vas a hacer, qué tipo de trabajo
             implica y cuánto tiempo. La IA calcula el resto.
           </div>
-          <Button size="lg" onClick={() => setModal({ open: true, editingBlock: null })}>
-            + Agregar bloque
-          </Button>
+          <div className="bq-row" style={{ gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <Button size="lg" variant="ghost" onClick={() => setDictationOpen(true)}>
+              🎤 Dictar el día
+            </Button>
+            <Button size="lg" onClick={() => setModal({ open: true, editingBlock: null })}>
+              + Agregar bloque
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="bq-grow" style={{ overflow: 'auto' }}>
@@ -243,6 +277,13 @@ export function PlanPage() {
         editingBlock={modal.editingBlock}
         onClose={() => setModal({ open: false, editingBlock: null })}
         onSubmit={handleSubmitBlock}
+      />
+
+      <DictationModal
+        open={dictationOpen}
+        onClose={() => setDictationOpen(false)}
+        onAnalyze={handleAnalyzeDictation}
+        onSave={handleSaveDictation}
       />
     </AppShell>
   );

@@ -18,9 +18,18 @@ export function assignedMinutes(blocks) {
   return (blocks ?? []).reduce((a, b) => a + (b.duration_min ?? b.durationMin ?? 0), 0);
 }
 
+/** Hora de inicio fijada por el usuario, si existe (acepta "HH:MM" o "HH:MM:SS"). */
+export function fixedStartOf(block) {
+  return block?.fixed_start ?? block?.fixedStart ?? null;
+}
+
 /**
- * Calcula scheduled_start / scheduled_end de cada bloque, en orden de posición,
- * de forma contigua desde el inicio de la ventana de trabajo.
+ * Calcula scheduled_start / scheduled_end de cada bloque, en orden de posición.
+ * Por defecto los agenda contiguos desde el inicio de la ventana de trabajo, pero
+ * un bloque con `fixed_start` se ancla a esa hora: arranca exactamente ahí si hay
+ * hueco (dejando un espacio), o justo tras el bloque anterior si ese hueco ya está
+ * ocupado (evitando solapes). Para que la hora fija se honre, los bloques deben ir
+ * en orden cronológico (el dictado los ordena así).
  * @returns {Array<{ ...block, position:number, scheduled_start:string, scheduled_end:string }>}
  */
 export function scheduleBlocks(blocks, workWindowStart) {
@@ -29,8 +38,9 @@ export function scheduleBlocks(blocks, workWindowStart) {
     .sort((a, b) => a.position - b.position)
     .map((b, i) => {
       const duration = b.duration_min ?? b.durationMin ?? 0;
-      const start = cursor;
-      const end = cursor + duration;
+      const fixed = fixedStartOf(b);
+      const start = fixed != null ? Math.max(timeToMinutes(fixed), cursor) : cursor;
+      const end = start + duration;
       cursor = end;
       return {
         ...b,

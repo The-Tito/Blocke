@@ -1,0 +1,18 @@
+# Configuración del proyecto Supabase (versionada).
+# ref del proyecto: sehvjozffzbqeyaatwqn ("Organizador").
+project_id = "sehvjozffzbqeyaatwqn"
+
+# ─── Edge Functions ──────────────────────────────────────────────────────────
+# verify_jwt = true → la Edge Function exige un JWT de sesión válido. Esto evita
+# que un tercero invoque las funciones (y consuma cuota de Groq) sin estar
+# autenticado. Es el comportamiento por defecto de Supabase; lo dejamos explícito
+# y versionado para que no se pierda en futuros deploys.
+
+[functions.groq-segment-plan]
+verify_jwt = true
+
+[functions.groq-day-summary]
+verify_jwt = true
+
+[functions.groq-parse-activities]
+verify_jwt = true

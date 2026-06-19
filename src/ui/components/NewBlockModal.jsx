@@ -12,6 +12,7 @@ export function NewBlockModal({ open, onClose, onSubmit, editingBlock }) {
   const [title, setTitle] = useState('');
   const [workType, setWorkType] = useState(WORK_TYPES[0].id);
   const [durationMin, setDurationMin] = useState(60);
+  const [fixedStart, setFixedStart] = useState('');
   const [errors, setErrors] = useState({});
   const [busy, setBusy] = useState(false);
 
@@ -23,10 +24,12 @@ export function NewBlockModal({ open, onClose, onSubmit, editingBlock }) {
       const wt = WORK_TYPES.find((t) => t.label === editingBlock.work_type);
       setWorkType(wt?.id ?? WORK_TYPES[0].id);
       setDurationMin(editingBlock.duration_min);
+      setFixedStart(editingBlock.fixed_start ? editingBlock.fixed_start.slice(0, 5) : '');
     } else {
       setTitle('');
       setWorkType(WORK_TYPES[0].id);
       setDurationMin(60);
+      setFixedStart('');
     }
     setErrors({});
     setBusy(false);
@@ -35,7 +38,7 @@ export function NewBlockModal({ open, onClose, onSubmit, editingBlock }) {
   async function handleSubmit() {
     setBusy(true);
     setErrors({});
-    const result = await onSubmit({ title, workType, durationMin });
+    const result = await onSubmit({ title, workType, durationMin, fixedStart });
     setBusy(false);
     if (result?.ok) onClose();
     else setErrors(result?.errors ?? { title: 'No se pudo guardar.' });
@@ -109,6 +112,32 @@ export function NewBlockModal({ open, onClose, onSubmit, editingBlock }) {
         {errors.durationMin && (
           <span style={{ fontSize: 12, color: '#c0392b' }}>{errors.durationMin}</span>
         )}
+      </div>
+
+      <div className="bq-stack" style={{ gap: 12 }}>
+        <div className="bq-row" style={{ justifyContent: 'space-between' }}>
+          <span className="bq-field-label">Hora de inicio (opcional)</span>
+          {fixedStart && (
+            <button
+              type="button"
+              className="bq-meta bq-mono"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--bq-fg-3)' }}
+              onClick={() => setFixedStart('')}
+            >
+              quitar · automático
+            </button>
+          )}
+        </div>
+        <input
+          className="bq-input"
+          type="time"
+          value={fixedStart}
+          onChange={(e) => setFixedStart(e.target.value)}
+          style={{ fontSize: 14 }}
+        />
+        <span className="bq-meta">
+          Vacío = se agenda contiguo al bloque anterior. Con hora = se ancla a ese horario.
+        </span>
       </div>
 
       <div

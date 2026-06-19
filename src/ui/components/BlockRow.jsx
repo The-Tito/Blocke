@@ -7,7 +7,10 @@ import { planSummaryLabel } from '../../domain/segmentPlan.js';
 export function BlockRow({ block, right, dim = false, strike = false }) {
   return (
     <div className="bq-tl-row" style={{ opacity: dim ? 0.5 : 1 }}>
-      <div className="bq-tl-time bq-mono">{block.scheduled_start ?? '--:--'}</div>
+      <div className="bq-tl-time bq-mono" title={block.fixed_start ? 'Hora fijada' : undefined}>
+        {block.fixed_start ? '📌 ' : ''}
+        {block.scheduled_start ?? '--:--'}
+      </div>
       <div style={{ minWidth: 0 }}>
         <div
           className="bq-tl-title"
