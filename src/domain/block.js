@@ -24,11 +24,25 @@ export const BLOCK_STATUS = Object.freeze({
 });
 
 /**
+ * Normaliza una hora de inicio fija a "HH:MM", o null si está vacía/inválida.
+ * Acepta "9:00", "09:00", "09:00:00".
+ */
+export function normalizeFixedStart(value) {
+  if (value == null || value === '') return null;
+  const m = String(value).trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (h > 23 || min > 59) return null;
+  return `${String(h).padStart(2, '0')}:${m[2]}`;
+}
+
+/**
  * Valida la entrada del usuario para crear/editar un bloque.
- * @returns {{ ok: true, value: {title:string, workType:string, durationMin:number} }
+ * @returns {{ ok: true, value: {title:string, workType:string, durationMin:number, fixedStart:string|null} }
  *          | { ok: false, errors: Record<string,string> }}
  */
-export function validateBlockInput({ title, workType, durationMin }) {
+export function validateBlockInput({ title, workType, durationMin, fixedStart }) {
   const errors = {};
   const cleanTitle = typeof title === 'string' ? title.trim() : '';
   if (!cleanTitle) errors.title = 'Escribe qué vas a hacer.';
@@ -42,8 +56,14 @@ export function validateBlockInput({ title, workType, durationMin }) {
     errors.durationMin = `La duración debe estar entre ${MIN_DURATION} y ${MAX_DURATION} minutos.`;
   }
 
+  // La hora fija es opcional; si viene con formato inválido la ignoramos (null).
+  const fixed = normalizeFixedStart(fixedStart);
+
   if (Object.keys(errors).length > 0) return { ok: false, errors };
-  return { ok: true, value: { title: cleanTitle, workType, durationMin: Math.round(dur) } };
+  return {
+    ok: true,
+    value: { title: cleanTitle, workType, durationMin: Math.round(dur), fixedStart: fixed },
+  };
 }
 
 /** Un bloque cuenta como "terminado" (no vuelve a la cola de ejecución). */

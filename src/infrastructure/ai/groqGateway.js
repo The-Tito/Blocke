@@ -10,14 +10,27 @@
  */
 import { supabase } from '../supabase/client.js';
 import { clientFallbackPlan, normalizeSegmentPlan } from '../../domain/segmentPlan.js';
+import { parseDictationText, normalizeDrafts, MAX_DICTATION_CHARS } from '../../domain/dictation.js';
+
+/**
+ * Cache de planes de microdescansos por (tipo de trabajo + duración) durante la
+ * sesión. El plan depende esencialmente de esos dos datos, así que dictar o crear
+ * varios bloques del mismo tipo/duración reutiliza el plan en lugar de gastar
+ * tokens de Groq otra vez. Vive en memoria del SPA (un solo usuario por cliente).
+ */
+const planCache = new Map();
 
 export const groqGateway = {
   /**
    * Calcula el plan de segmentos de un bloque.
    * @returns {Promise<{ plan: import('../../domain/segmentPlan.js').SegmentPlan,
-   *                      source: 'groq'|'fallback'|'offline' }>}
+   *                      source: 'groq'|'fallback'|'offline'|'cache' }>}
    */
   async generateSegmentPlan({ workTypeLabel, workTypeId, durationMin, scheduledStart, accumulatedWorkMin }) {
+    const cacheKey = `${workTypeId}:${durationMin}`;
+    if (planCache.has(cacheKey)) {
+      return { plan: planCache.get(cacheKey), source: 'cache' };
+    }
     try {
       const { data, error } = await supabase.functions.invoke('groq-segment-plan', {
         body: {
@@ -28,13 +41,34 @@ export const groqGateway = {
         },
       });
       if (error) throw error;
+      const plan = normalizeSegmentPlan({ segments: data?.segments });
+      planCache.set(cacheKey, plan); // memoiza para no volver a gastar tokens
+      return { plan, source: data?.source === 'groq' ? 'groq' : 'fallback' };
+    } catch (_e) {
+      // Red caída: respaldo local para que planear nunca se bloquee (no se cachea).
+      return { plan: clientFallbackPlan(workTypeId, durationMin), source: 'offline' };
+    }
+  },
+
+  /**
+   * Convierte texto dictado en borradores de bloque categorizados.
+   * @param {string} text
+   * @returns {Promise<{ drafts: object[], source: 'groq'|'fallback'|'offline' }>}
+   */
+  async parseDictation(text) {
+    const clean = String(text ?? '').slice(0, MAX_DICTATION_CHARS);
+    try {
+      const { data, error } = await supabase.functions.invoke('groq-parse-activities', {
+        body: { text: clean },
+      });
+      if (error) throw error;
       return {
-        plan: normalizeSegmentPlan({ segments: data?.segments }),
+        drafts: normalizeDrafts(data?.activities),
         source: data?.source === 'groq' ? 'groq' : 'fallback',
       };
     } catch (_e) {
-      // Red caída: respaldo local para que planear nunca se bloquee.
-      return { plan: clientFallbackPlan(workTypeId, durationMin), source: 'offline' };
+      // Red caída: parser local de reglas para que el dictado nunca se bloquee.
+      return { drafts: normalizeDrafts(parseDictationText(clean)), source: 'offline' };
     }
   },
 

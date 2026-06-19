@@ -10,7 +10,9 @@ import { createClient } from '@supabase/supabase-js';
 const url = import.meta.env.VITE_SUPABASE_URL;
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-if (!url || !anonKey) {
+export const isSupabaseConfigured = Boolean(url && anonKey);
+
+if (!isSupabaseConfigured) {
   // Fallar ruidosamente en desarrollo: sin credenciales la app no funciona.
   console.error(
     '[Bloque] Faltan VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY. ' +
@@ -18,12 +20,22 @@ if (!url || !anonKey) {
   );
 }
 
-export const supabase = createClient(url ?? '', anonKey ?? '', {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
+// `createClient` lanza "supabaseUrl is required" si la URL es vacía, y lo hace
+// en tiempo de import —antes de que App pueda mostrar el aviso de configuración,
+// dejando la pantalla en blanco. Para no romper el bundle usamos un placeholder
+// válido cuando faltan las credenciales: App corta a `MissingEnvNotice` y nunca
+// se llega a hacer ninguna petición con este cliente inerte.
+const PLACEHOLDER_URL = 'https://placeholder.supabase.co';
+const PLACEHOLDER_KEY = 'placeholder-anon-key';
 
-export const isSupabaseConfigured = Boolean(url && anonKey);
+export const supabase = createClient(
+  isSupabaseConfigured ? url : PLACEHOLDER_URL,
+  isSupabaseConfigured ? anonKey : PLACEHOLDER_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  },
+);

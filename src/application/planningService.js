@@ -7,6 +7,7 @@
  */
 import { validateBlockInput, BLOCK_STATUS } from '../domain/block.js';
 import { WORK_TYPES } from '../domain/workTypes.js';
+import { normalizeDrafts } from '../domain/dictation.js';
 import {
   scheduleBlocks,
   fitsInWindow,
@@ -50,6 +51,56 @@ export function createPlanningService({ dayRepo, blockRepo, aiGateway }) {
     return scheduled;
   }
 
+  /**
+   * Lógica común para agregar un bloque al día (la usan `addBlock` y el
+   * guardado por lotes del dictado). Valida, comprueba la ventana de trabajo,
+   * pide el plan de microdescansos a la IA y persiste bloque + pausas.
+   */
+  async function addOneBlock({ userId, day, input, existingBlocks, profile }) {
+    const v = validateBlockInput(input);
+    if (!v.ok) return { ok: false, errors: v.errors };
+    const { title, workType, durationMin, fixedStart } = v.value;
+
+    if (!fitsInWindow(existingBlocks, durationMin, profile.work_window_start, profile.work_window_end)) {
+      return {
+        ok: false,
+        errors: { durationMin: 'No cabe: superarías tu ventana de trabajo del día.' },
+      };
+    }
+
+    const wt = WORK_TYPES.find((t) => t.id === workType);
+    const position = existingBlocks.length;
+    const scheduled = scheduleBlocks(
+      [...existingBlocks, { id: '__new__', position, duration_min: durationMin, fixed_start: fixedStart }],
+      profile.work_window_start,
+    );
+    const mine = scheduled.find((b) => b.id === '__new__');
+
+    const { plan, source } = await aiGateway.generateSegmentPlan({
+      workTypeLabel: wt.label,
+      workTypeId: wt.id,
+      durationMin,
+      scheduledStart: mine.scheduled_start,
+      accumulatedWorkMin: assignedMinutes(existingBlocks),
+    });
+
+    const block = await blockRepo.create({
+      day_id: day.id,
+      user_id: userId,
+      position,
+      title,
+      work_type: wt.label,
+      duration_min: durationMin,
+      fixed_start: fixedStart,
+      scheduled_start: mine.scheduled_start,
+      scheduled_end: mine.scheduled_end,
+      segment_plan: plan,
+      status: BLOCK_STATUS.PENDING,
+    });
+    await blockRepo.createBreaks(breaksFromPlan(plan, block.id, userId));
+    return { ok: true, block, source };
+  }
+
   return {
     /** Carga (creando si hace falta) el día y sus bloques. */
     async loadDay(userId, dateKey) {
@@ -62,55 +113,59 @@ export function createPlanningService({ dayRepo, blockRepo, aiGateway }) {
      * Agrega un bloque al día: valida, comprueba que cabe en la ventana de
      * trabajo, pide el plan de microdescansos a la IA y persiste bloque + pausas.
      */
-    async addBlock({ userId, day, input, existingBlocks, profile }) {
-      const v = validateBlockInput(input);
-      if (!v.ok) return { ok: false, errors: v.errors };
-      const { title, workType, durationMin } = v.value;
+    addBlock: addOneBlock,
 
-      if (!fitsInWindow(existingBlocks, durationMin, profile.work_window_start, profile.work_window_end)) {
-        return {
-          ok: false,
-          errors: { durationMin: 'No cabe: superarías tu ventana de trabajo del día.' },
-        };
+    /**
+     * Paso 1 del dictado: convierte texto en lenguaje natural a borradores de
+     * bloque (la IA los categoriza). NO guarda nada: alimenta la vista previa
+     * editable para que el usuario revise antes de confirmar.
+     * @returns {Promise<{ ok: boolean, drafts?: object[], source?: string, error?: string }>}
+     */
+    async parseDictation({ text }) {
+      const clean = typeof text === 'string' ? text.trim() : '';
+      if (!clean) return { ok: false, error: 'Dicta o escribe al menos una actividad.' };
+      const { drafts, source } = await aiGateway.parseDictation(clean);
+      const normalized = normalizeDrafts(drafts);
+      if (normalized.length === 0) {
+        return { ok: false, error: 'No se reconoció ninguna actividad en el texto.' };
       }
+      return { ok: true, drafts: normalized, source };
+    },
 
-      const wt = WORK_TYPES.find((t) => t.id === workType);
-      const position = existingBlocks.length;
-      const scheduled = scheduleBlocks(
-        [...existingBlocks, { id: '__new__', position, duration_min: durationMin }],
-        profile.work_window_start,
-      );
-      const mine = scheduled.find((b) => b.id === '__new__');
-
-      const { plan, source } = await aiGateway.generateSegmentPlan({
-        workTypeLabel: wt.label,
-        workTypeId: wt.id,
-        durationMin,
-        scheduledStart: mine.scheduled_start,
-        accumulatedWorkMin: assignedMinutes(existingBlocks),
-      });
-
-      const block = await blockRepo.create({
-        day_id: day.id,
-        user_id: userId,
-        position,
-        title,
-        work_type: wt.label,
-        duration_min: durationMin,
-        scheduled_start: mine.scheduled_start,
-        scheduled_end: mine.scheduled_end,
-        segment_plan: plan,
-        status: BLOCK_STATUS.PENDING,
-      });
-      await blockRepo.createBreaks(breaksFromPlan(plan, block.id, userId));
-      return { ok: true, block, source };
+    /**
+     * Paso 2 del dictado: guarda los borradores confirmados como bloques. Llama
+     * a `addOneBlock` en serie recargando los bloques del día entre inserciones,
+     * para que la ventana de trabajo y los horarios se acumulen correctamente.
+     * @returns {Promise<{ ok: boolean, created: object[], skipped: {draft, error}[] }>}
+     */
+    async addBlocksFromDrafts({ userId, day, drafts, profile }) {
+      const created = [];
+      const skipped = [];
+      let existingBlocks = await blockRepo.listByDay(day.id);
+      for (const draft of drafts ?? []) {
+        const res = await addOneBlock({
+          userId,
+          day,
+          input: draft,
+          existingBlocks,
+          profile,
+        });
+        if (res.ok) {
+          created.push(res.block);
+          existingBlocks = [...existingBlocks, res.block];
+        } else {
+          const msg = Object.values(res.errors ?? {})[0] ?? 'No se pudo guardar.';
+          skipped.push({ draft, error: msg });
+        }
+      }
+      return { ok: created.length > 0, created, skipped };
     },
 
     /** Edita un bloque: revalida, recalcula el plan de IA y reprograma el día. */
     async editBlock({ userId, blockId, input, allBlocks, profile }) {
       const v = validateBlockInput(input);
       if (!v.ok) return { ok: false, errors: v.errors };
-      const { title, workType, durationMin } = v.value;
+      const { title, workType, durationMin, fixedStart } = v.value;
 
       const others = allBlocks.filter((b) => b.id !== blockId);
       if (!fitsInWindow(others, durationMin, profile.work_window_start, profile.work_window_end)) {
@@ -123,7 +178,7 @@ export function createPlanningService({ dayRepo, blockRepo, aiGateway }) {
       const wt = WORK_TYPES.find((t) => t.id === workType);
       const target = allBlocks.find((b) => b.id === blockId);
       const merged = allBlocks.map((b) =>
-        b.id === blockId ? { ...b, duration_min: durationMin } : b,
+        b.id === blockId ? { ...b, duration_min: durationMin, fixed_start: fixedStart } : b,
       );
       const scheduled = scheduleBlocks(merged, profile.work_window_start);
       const mine = scheduled.find((b) => b.id === blockId);
@@ -140,6 +195,7 @@ export function createPlanningService({ dayRepo, blockRepo, aiGateway }) {
         title,
         work_type: wt.label,
         duration_min: durationMin,
+        fixed_start: fixedStart,
         segment_plan: plan,
       });
       await blockRepo.deleteBreaksByBlock(blockId);

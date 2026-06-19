@@ -154,35 +154,20 @@ function normalizePlan(raw: unknown, req: PlanRequest): Segment[] | null {
 
 // ─── Llamada a Groq ─────────────────────────────────────────────────────────
 async function callGroq(apiKey: string, req: PlanRequest): Promise<Segment[] | null> {
+  // Prompt compacto: mismas reglas, menos tokens.
   const system = [
-    'Eres el motor de microdescansos de Bloque, una app de time blocking.',
-    'Divides un bloque de trabajo en segmentos de trabajo separados por microdescansos.',
-    'Te basas en tres marcos científicos:',
-    '1. Restauración de atención (Kaplan): la atención dirigida se agota y se',
-    '   recupera con estímulos sin esfuerzo (naturaleza, vistas abiertas, caminar).',
-    '2. Regla 20-20-20: cada 20 min de pantalla, mirar 20 s a 6 m de distancia.',
-    '3. Ergonomía ocupacional: estar sentado >60-90 min sin moverse acumula tensión',
-    '   en cuello, hombros y zona lumbar. El movimiento específico recupera de verdad.',
-    'Reglas de salida:',
-    '- Reuniones y grabaciones: pocas pausas o ninguna (el cuerpo ya cambia de modo).',
-    '- Código y edición: pausas con la regla 20-20-20 (fatiga visual).',
-    '- Escritura, diseño, lectura: pausas de restauración de atención (mirar lejos, caminar).',
-    '- Segmentos de trabajo de 20-30 min. Pausas de 3-7 min. El primero y el último',
-    '  segmento siempre son de tipo "work".',
-    '- La suma de minutos de trabajo debe ser igual a la duración total pedida.',
-    'REGLA CLAVE PARA `activity` (pausa):',
-    '- La actividad debe OCUPAR TODA la duración del descanso. Si una acción base es',
-    '  corta (ej. mirar a 6 m suelen ser 30 s), encadena varias micro-acciones hasta',
-    '  cubrir todos los minutos. NUNCA dejes "tiempo muerto" sin indicación.',
-    '- Formato obligatorio: lista de pasos separados por salto de línea ("\\n"),',
-    '  cada paso con "Acción · tiempo" en español. La suma de los tiempos debe ser',
-    '  igual a duration_min de la pausa.',
-    '- Ejemplo de activity para una pausa de 5 min:',
-    '  "Mira a 6 m · 30 s\\nEstiramiento cervical · 1 min 30 s\\nCamina lento · 2 min\\nRespira lento · 1 min"',
-    'Responde SOLO JSON con esta forma exacta:',
-    '{"segments":[{"index":0,"kind":"work","duration_min":25},',
-    '{"index":1,"kind":"break","duration_min":5,"activity":"Mira a 6 m · 30 s\\nEstiramiento · 1 min 30 s\\nCamina · 2 min\\nRespira · 1 min","rationale":"..."}]}',
-    'rationale: una frase con el porqué del conjunto de la pausa.',
+    'Motor de microdescansos de una app de time blocking. Divides un bloque en',
+    'segmentos "work" separados por "break", según el tipo de trabajo:',
+    '- reunion/grabacion: pocas o ninguna pausa.',
+    '- codigo/edicion/diseno: pausas regla 20-20-20 (fatiga visual).',
+    '- escritura/lectura/admin: pausas de restauración (mirar lejos, caminar).',
+    'Reglas: segmentos work de 20-30 min; pausas de 3-7 min; primero y último son',
+    '"work"; suma de minutos work = duración total.',
+    '`activity` (solo en break): pasos "Acción · tiempo" separados por "\\n", cuyos',
+    'tiempos sumen el duration_min de la pausa (sin tiempo muerto). `rationale`: una',
+    'frase con el porqué.',
+    'Responde SOLO JSON: {"segments":[{"index":0,"kind":"work","duration_min":25},',
+    '{"index":1,"kind":"break","duration_min":5,"activity":"Mira a 6 m · 30 s\\nEstira cuello · 2 min\\nCamina · 1 min 30 s\\nRespira · 1 min","rationale":"..."}]}',
   ].join('\n');
 
   const user = [
@@ -204,7 +189,7 @@ async function callGroq(apiKey: string, req: PlanRequest): Promise<Segment[] | n
       body: JSON.stringify({
         model: GROQ_MODEL,
         temperature: 0.4,
-        max_tokens: 1024,
+        max_tokens: 512,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: system },

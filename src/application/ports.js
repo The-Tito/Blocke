@@ -40,6 +40,7 @@
  * @typedef {Object} AiGateway
  * @property {(input) => Promise<{plan, source}>} generateSegmentPlan
  * @property {(metrics) => Promise<{note, source}>} generateDaySummary
+ * @property {(text: string) => Promise<{drafts, source}>} parseDictation
  */
 
 export {};
